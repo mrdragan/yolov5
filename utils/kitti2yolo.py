@@ -29,7 +29,9 @@ def partition_data(filenames):
     return filenames[:partition_index], filenames[partition_index:]
 
 def convert_and_save_labels(input_files, include_distance, save_dir, 
-                            extension=None):
+                            extension=None, image_dir=None):
+    img_h = 1
+    img_w = 1
     # Update path for this set
     label_dir = os.path.join(save_dir, 'labels')
     if extension:
@@ -37,6 +39,11 @@ def convert_and_save_labels(input_files, include_distance, save_dir,
     os.makedirs(label_dir, exist_ok=True)
 
     for filename in tqdm(input_files):
+        # If image_dir is set normalize the box coordinates
+        if image_dir:
+            name = os.path.basename(filename).split('.')[0] + '.png'
+            img = cv2.imread(os.path.join(image_dir, name))
+            img_h, img_w, _ = img.shape
         yolo_labels = defaultdict(list)
         local_labels = pd.read_csv(
             filename, header=None, delim_whitespace=True)
@@ -45,10 +52,10 @@ def convert_and_save_labels(input_files, include_distance, save_dir,
                 continue
             yolo_labels['type'].append(numerical_mapping[row[0]])
             boxes = yoloize_boxes(list(row[4:8]))
-            yolo_labels['x_center'].append(boxes[0])
-            yolo_labels['y_center'].append(boxes[1])
-            yolo_labels['width'].append(boxes[2])
-            yolo_labels['height'].append(boxes[3])
+            yolo_labels['x_center'].append(boxes[0] / img_w)
+            yolo_labels['y_center'].append(boxes[1] / img_h)
+            yolo_labels['width'].append(boxes[2] / img_w)
+            yolo_labels['height'].append(boxes[3] / img_h)
             if include_distance:
                 yolo_labels['distance'].append(get_distances(list(row[11:14])))
         yolo_df = pd.DataFrame(yolo_labels)
@@ -89,13 +96,13 @@ if __name__=='__main__':
 
     # Save train files
     print("Converting training data")
-    convert_and_save_labels(
-        train_files, args.include_distance, args.save_dir, extension='train')
+    convert_and_save_labels(train_files, args.include_distance, args.save_dir, 
+        extension='train', image_dir=args.image_dir)
 
     # Save val files
     print("Converting validation data")
-    convert_and_save_labels(
-        val_files, args.include_distance, args.save_dir, extension='valid')
+    convert_and_save_labels(val_files, args.include_distance, args.save_dir, 
+        extension='valid', image_dir=args.image_dir)
     
     if args.image_dir:
         imagenames = os.listdir(args.image_dir)
