@@ -57,7 +57,9 @@ def convert_and_save_labels(input_files, include_distance, save_dir,
             yolo_labels['width'].append(boxes[2] / img_w)
             yolo_labels['height'].append(boxes[3] / img_h)
             if include_distance:
-                yolo_labels['distance'].append(get_distances(list(row[11:14])))
+                distance = get_distances(list(row[11:14]))
+                distance = distance if distance < include_distance else include_distance
+                yolo_labels['distance'].append(distance/include_distance)
         yolo_df = pd.DataFrame(yolo_labels)
         # append the labels extension 
         basename = os.path.basename(filename)
@@ -85,7 +87,9 @@ if __name__=='__main__':
         help="Select location for saving data. New directories 'labels'"
         "and 'imagery' (assuming an image dir was given) will be created and"
         "'train' and 'valid' directories will be created within those")
-    parser.add_argument('--include_distance', action='store_true')
+    parser.add_argument('--include_distance', type=int, default=None, 
+        help="Include the maximum distance from the camera shown as >=max for" 
+        "objects further from the camera")
 
     args = parser.parse_args()
 
