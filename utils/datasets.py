@@ -602,8 +602,10 @@ class LoadImagesAndLabels(Dataset):
 
             # Cutouts
             # labels = cutout(img, labels, p=0.5)
-
-        labels_out = torch.zeros((nl, 6))
+        if labels.shape[1] > 5:
+            labels_out = torch.zeros((nl, 7))
+        else:
+            labels_out = torch.zeros((nl, 6))
         if nl:
             labels_out[:, 1:] = torch.from_numpy(labels)
 
@@ -902,7 +904,7 @@ def verify_image_label(args):
                     l = np.concatenate((classes.reshape(-1, 1), segments2boxes(segments)), 1)  # (cls, xywh)
                 l = np.array(l, dtype=np.float32)
             if len(l):
-                assert l.shape[1] == 5, 'labels require 5 columns each'
+                assert (l.shape[1] == 5 or l.shape[1] == 6), 'labels require 5 or 6 columns each'
                 assert (l >= 0).all(), 'negative labels'
                 assert (l[:, 1:] <= 1).all(), 'non-normalized or out of bounds coordinate labels'
                 assert np.unique(l, axis=0).shape[0] == l.shape[0], 'duplicate labels'

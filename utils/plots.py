@@ -294,6 +294,8 @@ def plot_val_study(file='', dir='', x=None):  # from utils.plots import *; plot_
 
 
 def plot_labels(labels, names=(), save_dir=Path('')):
+    if labels.shape[1] != 5:
+        labels = labels[:, :5]
     # plot dataset labels
     print('Plotting labels... ')
     c, b = labels[:, 0], labels[:, 1:].transpose()  # classes, boxes

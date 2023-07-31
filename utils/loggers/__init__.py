@@ -33,9 +33,9 @@ class Loggers():
         self.hyp = hyp
         self.logger = logger  # for printing results to console
         self.include = include
-        self.keys = ['train/box_loss', 'train/obj_loss', 'train/cls_loss',  # train loss
+        self.keys = ['train/box_loss', 'train/obj_loss', 'train/cls_loss', 'train/dist_loss',  # train loss
                      'metrics/precision', 'metrics/recall', 'metrics/mAP_0.5', 'metrics/mAP_0.5:0.95',  # metrics
-                     'val/box_loss', 'val/obj_loss', 'val/cls_loss',  # val loss
+                     'val/box_loss', 'val/obj_loss', 'val/cls_loss', 'val/dist_loss',  # val loss
                      'x/lr0', 'x/lr1', 'x/lr2']  # params
         for k in LOGGERS:
             setattr(self, k, None)  # init empty logger dictionary
@@ -105,7 +105,7 @@ class Loggers():
         x = {k: v for k, v in zip(self.keys, vals)}  # dict
         if self.csv:
             file = self.save_dir / 'results.csv'
-            n = len(x) + 1  # number of cols
+            n = len(x) + 1 # number of cols
             s = '' if file.exists() else (('%20s,' * n % tuple(['epoch'] + self.keys)).rstrip(',') + '\n')  # add header
             with open(file, 'a') as f:
                 f.write(s + ('%20.5g,' * n % tuple([epoch] + vals)).rstrip(',') + '\n')
