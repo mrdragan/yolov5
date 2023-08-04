@@ -263,7 +263,7 @@ def run(data,
     # Plots
     if plots:
         confusion_matrix.plot(save_dir=save_dir, names=list(names.values()))
-        dist_metrics.plot(save_dir=save_dir)
+        dist_metrics.plot(save_dir=save_dir, names=list(names.values()))
         callbacks.run('on_val_end')
 
     # Save JSON
