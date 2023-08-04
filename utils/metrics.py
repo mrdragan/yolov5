@@ -18,14 +18,16 @@ def fitness(x):
     return (x[:, :4] * w).sum(1)
 
 
-def ap_per_class(tp, conf, pred_cls, target_cls, plot=False, save_dir='.', names=()):
+def ap_per_class(tp, conf, pred_cls, pred_dist, target_cls, target_dist, plot=False, save_dir='.', names=()):
     """ Compute the average precision, given the recall and precision curves.
     Source: https://github.com/rafaelpadilla/Object-Detection-Metrics.
     # Arguments
         tp:  True positives (nparray, nx1 or nx10).
         conf:  Objectness value from 0-1 (nparray).
         pred_cls:  Predicted object classes (nparray).
+        pred_dist: Predicted object distance (nparray).
         target_cls:  True object classes (nparray).
+        target_dist: Truth object distance (nparray).
         plot:  Plot precision-recall curve at mAP@0.5
         save_dir:  Plot save directory
     # Returns
@@ -34,7 +36,7 @@ def ap_per_class(tp, conf, pred_cls, target_cls, plot=False, save_dir='.', names
 
     # Sort by objectness
     i = np.argsort(-conf)
-    tp, conf, pred_cls = tp[i], conf[i], pred_cls[i]
+    tp, conf, pred_cls, pred_dist = tp[i], conf[i], pred_cls[i], pred_dist[i]
 
     # Find unique classes
     unique_classes = np.unique(target_cls)
@@ -79,7 +81,6 @@ def ap_per_class(tp, conf, pred_cls, target_cls, plot=False, save_dir='.', names
 
     i = f1.mean(0).argmax()  # max F1 index
     return p[:, i], r[:, i], ap, f1[:, i], unique_classes.astype('int32')
-
 
 def compute_ap(recall, precision):
     """ Compute the average precision, given the recall and precision curves
@@ -130,7 +131,7 @@ class ConfusionMatrix:
         detections = detections[detections[:, 4] > self.conf]
         gt_classes = labels[:, 0].int()
         detection_classes = detections[:, 5].int()
-        iou = box_iou(labels[:, 1:], detections[:, :4])
+        iou = box_iou(labels[:, 1:5], detections[:, :4])
 
         x = torch.where(iou > self.iou_thres)
         if x[0].shape[0]:
@@ -144,7 +145,7 @@ class ConfusionMatrix:
             matches = np.zeros((0, 3))
 
         n = matches.shape[0] > 0
-        m0, m1, _ = matches.transpose().astype(np.int16)
+        m0, m1, _ = matches.transpose().astype(np.int16) # m0 is truth index, m1 is detection index
         for i, gc in enumerate(gt_classes):
             j = m0 == i
             if n and sum(j) == 1:
@@ -185,6 +186,86 @@ class ConfusionMatrix:
     def print(self):
         for i in range(self.nc + 1):
             print(' '.join(map(str, self.matrix[i])))
+
+class DistPlots:
+    # Updated version of https://github.com/kaanakan/object_detection_confusion_matrix
+    def __init__(self, nc, conf=0.01, iou_thres=0.2, max_dist=150):
+        self.target_dist = []
+        self.pred_dist = []
+        self.correct = [] # This list tracks with target_dist and pred_dist to identify if the detection was correct
+        self.nc = nc  # number of classes
+        self.conf = conf
+        self.iou_thres = iou_thres
+        self.max_dist = max_dist
+
+    def process_batch(self, detections, labels):
+        """
+        Return intersection-over-union (Jaccard index) of boxes.
+        Both sets of boxes are expected to be in (x1, y1, x2, y2) format.
+        Arguments:
+            detections (Array[N, 7]), x1, y1, x2, y2, conf, class, dist
+            labels (Array[M, 6]), class, x1, y1, x2, y2, dist
+        Returns:
+            None, updates confusion matrix accordingly
+        """
+        detections = detections[detections[:, 4] > self.conf]
+        iou = box_iou(labels[:, 1:5], detections[:, :4])
+
+        x = torch.where(iou > self.iou_thres)
+        if x[0].shape[0]:
+            matches = torch.cat((torch.stack(x, 1), iou[x[0], x[1]][:, None]), 1).cpu().numpy()
+            if x[0].shape[0] > 1:
+                matches = matches[matches[:, 2].argsort()[::-1]]
+                matches = matches[np.unique(matches[:, 1], return_index=True)[1]]
+                matches = matches[matches[:, 2].argsort()[::-1]]
+                matches = matches[np.unique(matches[:, 0], return_index=True)[1]]
+        else:
+            matches = np.zeros((0, 3))
+
+        n = matches.shape[0] > 0
+        m0, m1, _ = matches.transpose().astype(np.int16) # m0 is truth index, m1 is detection index
+
+        for ti, di in zip(m0, m1):
+            local_labels = labels[ti, :]
+            local_detect = detections[di, :]
+            self.target_dist.append(local_labels[-1].item() * self.max_dist)
+            self.pred_dist.append(local_detect[-1].item() * self.max_dist)
+
+            if local_labels[0] == local_detect[5]:
+                self.correct.append(True)
+            else:
+                self.correct.append(False)
+
+    def plot(self, save_dir='', names=()):
+        fig = plt.figure(figsize=(12, 9), tight_layout=True)
+        plt.plot(self.target_dist, self.pred_dist, marker='.', alpha=0.7, linestyle='None')
+        plt.plot([0, self.max_dist], [0, self.max_dist], color='r')
+        plt.xlabel('True Distance')
+        plt.ylabel('Predicted Distance')
+        plt.savefig(Path(save_dir) / 'all_dist_plot.png', dpi=250)
+        plt.close()
+
+        true_target_dist = [self.target_dist[i] for i in range(len(self.target_dist)) if self.correct[i]]
+        true_pred_dist = [self.pred_dist[i] for i in range(len(self.pred_dist)) if self.correct[i]]
+
+        fig = plt.figure(figsize=(12, 9), tight_layout=True)
+        plt.plot(true_target_dist, true_pred_dist, marker='.', alpha=0.7, linestyle='None')
+        plt.plot([0, self.max_dist], [0, self.max_dist], color='r')
+        plt.xlabel('True Distance')
+        plt.ylabel('Predicted Distance')
+        plt.savefig(Path(save_dir) / 'correct_label_dist_plot.png', dpi=250)
+        plt.close()
+
+        false_target_dist = [self.target_dist[i] for i in range(len(self.target_dist)) if not self.correct[i]]
+        false_pred_dist = [self.pred_dist[i] for i in range(len(self.pred_dist)) if not self.correct[i]]
+
+        fig = plt.figure(figsize=(12, 9), tight_layout=True)
+        plt.plot(false_target_dist, false_pred_dist, marker='.', alpha=0.7, linestyle='None')
+        plt.plot([0, self.max_dist], [0, self.max_dist], color='r')
+        plt.xlabel('True Distance')
+        plt.ylabel('Predicted Distance')
+        plt.savefig(Path(save_dir) / 'incorrect_label_dist_plot.png', dpi=250)
+        plt.close()
 
 
 def bbox_iou(box1, box2, x1y1x2y2=True, GIoU=False, DIoU=False, CIoU=False, eps=1e-7):
