@@ -143,8 +143,8 @@ def output_to_target(output):
     # Convert model output to target format [batch_id, class_id, x, y, w, h, conf]
     targets = []
     for i, o in enumerate(output):
-        for *box, conf, cls in o.cpu().numpy():
-            targets.append([i, cls, *list(*xyxy2xywh(np.array(box)[None])), conf])
+        for *box, conf, cls, dist in o.cpu().numpy():
+            targets.append([i, cls, *list(*xyxy2xywh(np.array(box)[None])), conf, dist])
     return np.array(targets)
 
 
@@ -188,7 +188,8 @@ def plot_images(images, targets, paths=None, fname='images.jpg', names=None, max
             ti = targets[targets[:, 0] == i]  # image targets
             boxes = xywh2xyxy(ti[:, 2:6]).T
             classes = ti[:, 1].astype('int')
-            labels = ti.shape[1] == 6  # labels if no conf column
+            dist = ti[:, -1] # Distance
+            labels = ti.shape[1] == 7  # labels if no conf column
             conf = None if labels else ti[:, 6]  # check for confidence presence (label vs pred)
 
             if boxes.shape[1]:
@@ -201,10 +202,11 @@ def plot_images(images, targets, paths=None, fname='images.jpg', names=None, max
             boxes[[1, 3]] += y
             for j, box in enumerate(boxes.T.tolist()):
                 cls = classes[j]
+                dst = dist[j] * 150
                 color = colors(cls)
                 cls = names[cls] if names else cls
                 if labels or conf[j] > 0.25:  # 0.25 conf thresh
-                    label = f'{cls}' if labels else f'{cls} {conf[j]:.1f}'
+                    label = f'{cls} dist={dst:.1f}' if labels else f'{cls} {conf[j]:.1f} dist={dst:.1f}'
                     annotator.box_label(box, label, color=color)
     annotator.im.save(fname)  # save
 
