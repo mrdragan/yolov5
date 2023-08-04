@@ -9,6 +9,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.stats import linregress
 import torch
 
 
@@ -193,6 +194,7 @@ class DistPlots:
         self.target_dist = []
         self.pred_dist = []
         self.correct = [] # This list tracks with target_dist and pred_dist to identify if the detection was correct
+        self.associated_classes = [] # The associated class for per class plots
         self.nc = nc  # number of classes
         self.conf = conf
         self.iou_thres = iou_thres
@@ -230,6 +232,7 @@ class DistPlots:
             local_detect = detections[di, :]
             self.target_dist.append(local_labels[-1].item() * self.max_dist)
             self.pred_dist.append(local_detect[-1].item() * self.max_dist)
+            self.associated_classes.append(local_labels[0].item())
 
             if local_labels[0] == local_detect[5]:
                 self.correct.append(True)
@@ -238,8 +241,10 @@ class DistPlots:
 
     def plot(self, save_dir='', names=()):
         fig = plt.figure(figsize=(12, 9), tight_layout=True)
-        plt.plot(self.target_dist, self.pred_dist, marker='.', alpha=0.7, linestyle='None')
+        _, _, rvalue, _, _ = linregress(self.target_dist, self.pred_dist)
+        plt.plot(self.target_dist, self.pred_dist, marker='.', alpha=0.7, linestyle='None', label=f'R-value: {rvalue}')
         plt.plot([0, self.max_dist], [0, self.max_dist], color='r')
+        plt.legend()
         plt.xlabel('True Distance')
         plt.ylabel('Predicted Distance')
         plt.savefig(Path(save_dir) / 'all_dist_plot.png', dpi=250)
@@ -249,8 +254,10 @@ class DistPlots:
         true_pred_dist = [self.pred_dist[i] for i in range(len(self.pred_dist)) if self.correct[i]]
 
         fig = plt.figure(figsize=(12, 9), tight_layout=True)
-        plt.plot(true_target_dist, true_pred_dist, marker='.', alpha=0.7, linestyle='None')
+        _, _, rvalue, _, _ = linregress(true_target_dist, true_pred_dist)
+        plt.plot(true_target_dist, true_pred_dist, marker='.', alpha=0.7, linestyle='None', label=f'R-value: {rvalue}')
         plt.plot([0, self.max_dist], [0, self.max_dist], color='r')
+        plt.legend()
         plt.xlabel('True Distance')
         plt.ylabel('Predicted Distance')
         plt.savefig(Path(save_dir) / 'correct_label_dist_plot.png', dpi=250)
@@ -260,12 +267,30 @@ class DistPlots:
         false_pred_dist = [self.pred_dist[i] for i in range(len(self.pred_dist)) if not self.correct[i]]
 
         fig = plt.figure(figsize=(12, 9), tight_layout=True)
-        plt.plot(false_target_dist, false_pred_dist, marker='.', alpha=0.7, linestyle='None')
+        _, _, rvalue, _, _ = linregress(false_target_dist, false_pred_dist)
+        plt.plot(false_target_dist, false_pred_dist, marker='.', alpha=0.7, linestyle='None', label=f'R-value: {rvalue}')
         plt.plot([0, self.max_dist], [0, self.max_dist], color='r')
+        plt.legend()
         plt.xlabel('True Distance')
         plt.ylabel('Predicted Distance')
         plt.savefig(Path(save_dir) / 'incorrect_label_dist_plot.png', dpi=250)
         plt.close()
+
+        for label in np.unique(self.associated_classes):
+            label_target_dist = [self.target_dist[i] for i in range(len(self.target_dist)) if self.correct[i] and self.associated_classes[i] == label]
+            label_pred_dist = [self.pred_dist[i] for i in range(len(self.pred_dist)) if self.correct[i] and self.associated_classes[i] == label]
+            fig = plt.figure(figsize=(12, 9), tight_layout=True)
+            _, _, rvalue, _, _ = linregress(label_target_dist, label_pred_dist)
+            plt.plot(label_target_dist, label_pred_dist, marker='.', alpha=0.7, linestyle='None', label=f'R-value: {rvalue}')
+            plt.plot([0, self.max_dist], [0, self.max_dist], color='r')
+            plt.legend()
+            plt.xlabel('True Distance')
+            plt.ylabel('Predicted Distance')
+            if len(names) > 0:
+                plt.savefig(Path(save_dir) / f'{names[int(label)]}_dist_plot.png', dpi=250)
+            else:
+                plt.savefig(Path(save_dir) / f'{label}_dist_plot.png', dpi=250)
+            plt.close()
 
 
 def bbox_iou(box1, box2, x1y1x2y2=True, GIoU=False, DIoU=False, CIoU=False, eps=1e-7):
